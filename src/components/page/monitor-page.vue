@@ -1,29 +1,51 @@
 <template>
   <div>
-    <el-dialog title="Add Problem Set" :visible.sync="addBoxShow" :append-to-body="true" width="600px">
+    <el-dialog title="Edit Monitor" :visible.sync="addBoxShow" :append-to-body="true" width="600px">
       <div>
         <el-input placeholder="The Title of The New Problem Set" v-model="newSetTitle"
                   prefix-icon="el-icon-edit-outline"></el-input>
       </div>
-      <div class="itemBox">
-        <div class="itemItem">
-          <el-button icon="el-icon-plus" round @click="addProblem">New</el-button>
-        </div>
-        <template v-for="(item,index) in problemSet">
-          <div :key="index" class="itemItem">
-            <b style="margin-right: 10px">{{ String.fromCharCode((65 + index)) }}</b>
-            <el-select v-model="item.oj" placeholder="OJ" style="width: 150px">
-              <el-option v-for="OJ in ojList" :key="OJ.id" :label="OJ.name" :value="OJ.name"></el-option>
-            </el-select>
-            <el-input v-model="item.pid" placeholder="Pro. Num" style="width: 150px"></el-input>
-            <el-select v-model="item.difficulty" style="width: 120px">
-              <el-option v-for="i in Array(6).keys()" :key="i" :value="i" :label="getDifficultyDescribe(i)"/>
-            </el-select>
-            <el-button type="danger" icon="el-icon-delete" size="mini" circle
-                       @click="delItem(item)"></el-button>
+      <el-divider><i class="el-icon-document"/></el-divider>
+      <el-tabs v-model="tabActive" type="card">
+        <el-tab-pane label="比赛" name="contest">
+          <div style="padding: 20px">
+            <el-input v-model="contest.contestId" placeholder="ContestID">
+              <el-select v-model="contest.oj" style="width: 150px" slot="prepend">
+                <el-option v-for="oj in contest_oj_list" :key="oj.id" :label="oj.name" :value="oj.id"/>
+              </el-select>
+            </el-input>
           </div>
-        </template>
-      </div>
+        </el-tab-pane>
+        <el-tab-pane label="题集" name="problem-set">
+          <div class="itemBox">
+            <template v-for="(item,index) in problemSet">
+              <div :key="index" class="itemItem">
+                <b style="margin-right: 10px">{{ String.fromCharCode((65 + index)) }}</b>
+                <el-input v-model="item.pid" placeholder="Pro. Num">
+                  <el-select v-model="item.oj" placeholder="OJ" style="width: 150px" slot="prepend">
+                    <el-option v-for="OJ in ojList" :key="OJ.id" :label="OJ.name" :value="OJ.name"></el-option>
+                  </el-select>
+                  <el-select v-model="item.difficulty" style="width: 120px" slot="append">
+                    <el-option v-for="i in Array(6).keys()" :key="i" :value="i" :label="getDifficultyDescribe(i)"/>
+                  </el-select>
+                </el-input>
+                <el-button type="danger" icon="el-icon-delete" size="mini" circle style="margin-left: 10px;"
+                           @click="delItem(item)"></el-button>
+              </div>
+            </template>
+            <div class="itemItem">
+              <el-button icon="el-icon-plus" round @click="addProblem">Problem</el-button>
+            </div>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
+      <el-divider><i class="el-icon-user-solid"/></el-divider>
+      <el-tree
+          :data="user_data"
+          show-checkbox
+          check-on-click-node
+          :expand-on-click-node="false"
+          ref="user_tree"/>
       <div slot="footer" class="dialog-footer">
         <el-button @click="initProblemSet">Cancel</el-button>
         <el-button type="primary" @click="submitCreate">Submit</el-button>
@@ -124,10 +146,18 @@ export default {
       proData: [],
       proList: [],
       ojList: [],
+      contest_oj_list: [],
       addBoxShow: false,
       newSetTitle: '',
       problemSet: [],
+      contest: {
+        oj: '',
+        contestId: ''
+      },
       isAdminMode: false,
+      user_loading: false,
+      user_data: [],
+      tabActive: 'contest'
     }
   },
   components: {
@@ -188,6 +218,19 @@ export default {
               that.$message.error(error.response.data.msg)
             }
           })
+      that.$http.get(this.api + '/v2/problem_set/valid_contest_oj')
+          .then(data => {
+            this.contest_oj_list = []
+            for (let item of data.data.data) {
+              this.contest_oj_list.push({
+                id: item.id,
+                name: item.name
+              })
+            }
+          })
+          .catch(error => {
+            if (error.response) that.$message.error(error.response.data.msg)
+          })
     },
     initProblemSet() {
       this.newSetTitle = ''
@@ -222,42 +265,72 @@ export default {
       }
     },
     submitCreate() {
+      let checked_nodes = this.$refs.user_tree.getCheckedNodes()
+      let checked_users = []
+      for (let i of checked_nodes) {
+        if (i.children === undefined) checked_users.push(i.username)
+      }
       const that = this
       if (!that.newSetTitle) {
         that.$message.error('Title cannot be empty!')
         return
       }
-      for (let item of that.problemSet) {
-        if (!(item.oj && item.pid)) {
-          that.$message.error('Problem cannot be empty!')
-          return
-        }
-      }
-      if (that.problemSet.length === 0) {
-        that.$message.error('ProblemSet cannot be empty!')
+      if (checked_users.length === 0) {
+        that.$message.error('Please select users')
         return
       }
-      let problems = []
-      for (let prob of that.problemSet) {
-        problems.push({
-          problem: prob.oj + '-' + prob.pid,
-          difficulty: prob.difficulty
+      if (this.tabActive === 'contest') {
+        that.$http.post(this.api + '/v2/problem_set/add_contest', {
+          name: that.newSetTitle,
+          contest_oj_id: that.contest.oj,
+          contest_id: that.contest.contestId,
+          user_list: JSON.stringify(checked_users)
         })
+            .then(data => {
+              that.$message.success(data.data.msg)
+              that.initProblemSet()
+              that.getList()
+            })
+            .catch(function (error) {
+              if (error.response) {
+                that.$message.error(error.response.data.msg)
+              }
+            })
       }
-      that.$http.post(this.api + '/v2/problem_set', {
-        name: that.newSetTitle,
-        problem_list: JSON.stringify(Array.from(problems))
-      })
-          .then(data => {
-            that.$message.success(data.data.msg)
-            that.initProblemSet()
-            that.getList()
+      if (this.tabActive === 'problem-set') {
+        for (let item of that.problemSet) {
+          if (!(item.oj && item.pid)) {
+            that.$message.error('Problem cannot be empty!')
+            return
+          }
+        }
+        if (that.problemSet.length === 0) {
+          that.$message.error('ProblemSet cannot be empty!')
+          return
+        }
+        let problems = []
+        for (let prob of that.problemSet) {
+          problems.push({
+            problem: prob.oj + '-' + prob.pid,
+            difficulty: prob.difficulty
           })
-          .catch(function (error) {
-            if (error.response) {
-              that.$message.error(error.response.data.msg)
-            }
-          })
+        }
+        that.$http.post(this.api + '/v2/problem_set/add_problem_set', {
+          name: that.newSetTitle,
+          problem_list: JSON.stringify(Array.from(problems)),
+          user_list: JSON.stringify(checked_users)
+        })
+            .then(data => {
+              that.$message.success(data.data.msg)
+              that.initProblemSet()
+              that.getList()
+            })
+            .catch(function (error) {
+              if (error.response) {
+                that.$message.error(error.response.data.msg)
+              }
+            })
+      }
     },
     delSet(setId) {
       const that = this
@@ -304,12 +377,46 @@ export default {
         default:
           return 'ERROR'
       }
+    },
+    getUserData() {
+      this.user_loading = true
+      if (!this.$store.state.Userlist) this.$store.commit('updateUserlist')
+      this.initUserData()
+    },
+    initUserData() {
+      if (this.$store.state.Userlist) {
+        this.user_loading = false
+        let usermap = new Map()
+        for (let item of this.$store.state.Userlist) {
+          let user = item[1]
+          if (user.status === 0) continue
+          if (!usermap.has(user.group)) usermap.set(user.group, [])
+          user.label = user.nickname
+          usermap.get(user.group).push(user)
+        }
+        this.user_data = []
+        for (let item of usermap) {
+          this.user_data.push({
+            label: item[0],
+            children: item[1]
+          })
+        }
+        this.user_data = [{
+          label: '全部',
+          children: this.user_data
+        }]
+      } else {
+        setTimeout(() => {
+          this.initUserData()
+        }, 500)
+      }
     }
   },
   created() {
     document.title = "Monitor - viewOJ"
     this.getList()
     this.getOJList()
+    this.getUserData()
   }
 }
 </script>
@@ -353,4 +460,16 @@ export default {
   align-items: center;
   justify-content: space-around
 }
+
+/deep/ .el-tree-node__children .el-tree-node__children .el-tree-node__content {
+  float: left;
+  width: 20%;
+  padding: 0 !important;
+  margin-left: 20px;
+}
+
+/deep/ .el-input-group__append, /deep/ .el-input-group__prepend {
+  background-color: transparent;
+}
+
 </style>
