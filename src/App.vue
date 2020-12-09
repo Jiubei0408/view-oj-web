@@ -91,4 +91,23 @@ export default {
 .el-select-dropdown .el-scrollbar .el-scrollbar__wrap {
   overflow: scroll;
 }
+
+.vertical-center {
+  position: relative;
+  top: 50%;
+  transform: translate(0, -50%);
+}
+
+.horizontal-center {
+  position: relative;
+  left: 50%;
+  transform: translate(-50%, 0);
+}
+
+.center {
+  position: relative;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
 </style>
